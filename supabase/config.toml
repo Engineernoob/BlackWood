@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.receive-resend-webhook]
 verify_jwt = false
+
+[functions.polar-webhook]
+verify_jwt = false
