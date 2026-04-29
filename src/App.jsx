@@ -25,6 +25,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 const AcquisitionDesk = lazy(() => import("./AcquisitionDesk"));
 const AccessRequest = lazy(() => import("./AccessRequest"));
 const AdminDashboard = lazy(() => import("./AdminDashboard"));
+const OutreachEmailBrain = lazy(() => import("./OutreachEmailBrain"));
 
 const fadeUp = {
   initial: { opacity: 0, y: 30 },
@@ -370,7 +371,9 @@ function Footer() {
 }
 
 export default function App() {
-  const [currentView, setCurrentView] = useState("landing");
+  const [currentView, setCurrentView] = useState(() =>
+    window.location.hash === "#outreach" ? "outreach" : "landing",
+  );
   const { scrollYProgress } = useScroll();
   const backgroundY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
 
@@ -421,6 +424,12 @@ export default function App() {
           </header>
           <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
             <AcquisitionDesk />
+          </Suspense>
+        </div>
+      ) : currentView === "outreach" ? (
+        <div className="min-h-screen bg-background-primary">
+          <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+            <OutreachEmailBrain />
           </Suspense>
         </div>
       ) : (
