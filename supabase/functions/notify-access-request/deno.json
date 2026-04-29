@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "resend": "npm:resend@6.12.2"
+  },
+  "nodeModulesDir": "auto"
+}

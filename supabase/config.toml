@@ -1,0 +1,7 @@
+project_id = "naoyxoaqbffdzbhkgbte"
+
+[functions.notify-access-request]
+verify_jwt = false
+
+[functions.send-access-confirmation]
+verify_jwt = false
