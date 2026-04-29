@@ -21,6 +21,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { supabase } from "./lib/supabase";
 
 const AcquisitionDesk = lazy(() => import("./AcquisitionDesk"));
 const AccessRequest = lazy(() => import("./AccessRequest"));
@@ -370,15 +371,229 @@ function Footer() {
   );
 }
 
-export default function App() {
-  const [currentView, setCurrentView] = useState(() =>
-    window.location.hash === "#outreach" ? "outreach" : "landing",
+const hashViews = {
+  "#access": "access",
+  "#admin": "admin",
+  "#desk": "desk",
+  "#outreach": "outreach",
+};
+
+const privateViews = new Set(["admin", "desk", "outreach"]);
+const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
+function getViewFromHash() {
+  return hashViews[window.location.hash] || "landing";
+}
+
+function getHashForView(view) {
+  return Object.entries(hashViews).find(([, value]) => value === view)?.[0] || "";
+}
+
+function isAdminUser(user) {
+  const email = user?.email?.toLowerCase();
+  return Boolean(email && adminEmails.includes(email));
+}
+
+function PrivateAccessGate({ currentView, onBack, session, loading }) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const userEmail = session?.user?.email || "";
+  const isSignedIn = Boolean(session?.user);
+  const isAllowed = isAdminUser(session?.user);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setStatus("");
+    setSubmitting(true);
+
+    const hash = getHashForView(currentView);
+    const redirectTo = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: redirectTo,
+      },
+    });
+
+    if (error) {
+      setStatus("Unable to send access link. Try again from an approved address.");
+    } else {
+      setStatus("Access link sent. Open it from this device to continue.");
+    }
+
+    setSubmitting(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setStatus("");
+  };
+
+  return (
+    <div className="min-h-screen bg-background-primary text-text-primary flex items-center justify-center px-6">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-white/[0.02] blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-white/[0.015] blur-3xl" />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
+        className="relative w-full max-w-md glass rounded-xl p-8"
+      >
+        <button
+          onClick={onBack}
+          className="mb-8 text-xs tracking-[0.15em] uppercase text-text-muted hover:text-text-primary transition-colors"
+        >
+          Blackwood Private Office
+        </button>
+
+        <div className="mb-8">
+          <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-white/[0.03]">
+            <Lock className="h-5 w-5 text-text-secondary" />
+          </div>
+          <p className="text-xs uppercase tracking-[0.18em] text-text-muted mb-3">
+            Private Operator Access
+          </p>
+          <h1 className="font-serif text-3xl leading-tight">
+            Internal console
+          </h1>
+          <p className="mt-4 text-sm leading-relaxed text-text-secondary">
+            This area is restricted to approved Blackwood operators.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="text-sm text-text-secondary">Checking access...</div>
+        ) : isSignedIn && !isAllowed ? (
+          <div className="space-y-5">
+            <div className="rounded-lg border border-border bg-white/[0.02] p-4">
+              <p className="text-sm text-text-primary">Access not approved.</p>
+              <p className="mt-2 text-xs leading-relaxed text-text-muted">
+                Signed in as {userEmail}. This email is not on the Blackwood
+                operator allowlist.
+              </p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="w-full rounded-full border border-border px-5 py-3 text-sm text-text-secondary hover:border-text-secondary/40 hover:text-text-primary transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {adminEmails.length === 0 ? (
+              <div className="rounded-lg border border-border bg-white/[0.02] p-4 text-sm leading-relaxed text-text-secondary">
+                Add <span className="font-mono text-text-primary">VITE_ADMIN_EMAILS</span> to
+                your environment before using the private console.
+              </div>
+            ) : null}
+
+            <label className="block">
+              <span className="mb-2 block text-xs uppercase tracking-[0.14em] text-text-muted">
+                Operator email
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@blackwoodprivate.xyz"
+                required
+                className="w-full rounded-lg border border-border bg-black/30 px-4 py-3 text-sm outline-none transition-colors placeholder:text-text-muted/50 focus:border-text-secondary/40"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={submitting || adminEmails.length === 0}
+              className="w-full rounded-full bg-text-primary px-5 py-3 text-sm font-medium text-background-primary transition-colors hover:bg-text-secondary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {submitting ? "Sending..." : "Send secure access link"}
+            </button>
+
+            {status ? (
+              <p className="text-sm leading-relaxed text-text-secondary">{status}</p>
+            ) : null}
+          </form>
+        )}
+      </motion.div>
+    </div>
   );
+}
+
+export default function App() {
+  const [currentView, setCurrentView] = useState(getViewFromHash);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const { scrollYProgress } = useScroll();
   const backgroundY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentView(getViewFromHash());
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (currentView !== "landing" || window.location.hash !== "#capabilities") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("capabilities")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [currentView]);
+
+  const navigateTo = (view) => {
+    const hash = getHashForView(view);
+    setCurrentView(view);
+
+    if (hash) {
+      window.location.hash = hash;
+    } else {
+      window.history.pushState("", document.title, window.location.pathname + window.location.search);
+    }
+  };
+
+  const privateViewBlocked =
+    privateViews.has(currentView) && (authLoading || !isAdminUser(session?.user));
+
   const handleViewCapabilities = () => {
     setCurrentView("landing");
+    window.location.hash = "capabilities";
     window.requestAnimationFrame(() => {
       document
         .getElementById("capabilities")
@@ -388,10 +603,17 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {currentView === "access" ? (
+      {privateViewBlocked ? (
+        <PrivateAccessGate
+          currentView={currentView}
+          loading={authLoading}
+          onBack={() => navigateTo("landing")}
+          session={session}
+        />
+      ) : currentView === "access" ? (
         <div className="min-h-screen bg-background-primary">
           <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-            <AccessRequest onBack={() => setCurrentView("landing")} />
+            <AccessRequest onBack={() => navigateTo("landing")} />
           </Suspense>
         </div>
       ) : currentView === "admin" ? (
@@ -410,7 +632,7 @@ export default function App() {
             <div className="flex items-center justify-between px-6 py-4">
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setCurrentView("landing")}
+                  onClick={() => navigateTo("landing")}
                   className="font-serif text-xl tracking-tight hover:text-text-secondary transition-colors"
                 >
                   Blackwood
@@ -445,15 +667,15 @@ export default function App() {
           <div className="relative">
             <Navigation
               onViewCapabilities={handleViewCapabilities}
-              onRequestAccess={() => setCurrentView("access")}
+              onRequestAccess={() => navigateTo("access")}
             />
             <Hero
               onViewCapabilities={handleViewCapabilities}
-              onRequestAccess={() => setCurrentView("access")}
+              onRequestAccess={() => navigateTo("access")}
             />
             <Capabilities />
             <Positioning />
-            <OnboardingCTA onRequestAccess={() => setCurrentView("access")} />
+            <OnboardingCTA onRequestAccess={() => navigateTo("access")} />
           </div>
         </div>
       )}
