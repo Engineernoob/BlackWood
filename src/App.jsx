@@ -385,6 +385,9 @@ const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || "")
   .filter(Boolean);
 
 function getViewFromHash() {
+  const operatorView = new URLSearchParams(window.location.search).get("operator_view");
+  if (privateViews.has(operatorView)) return operatorView;
+
   return hashViews[window.location.hash] || "landing";
 }
 
@@ -410,8 +413,9 @@ function PrivateAccessGate({ currentView, onBack, session, loading }) {
     setStatus("");
     setSubmitting(true);
 
-    const hash = getHashForView(currentView);
-    const redirectTo = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+    const params = new URLSearchParams(window.location.search);
+    params.set("operator_view", currentView);
+    const redirectTo = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
@@ -541,6 +545,11 @@ export default function App() {
       if (!mounted) return;
       setSession(data.session);
       setAuthLoading(false);
+
+      const operatorView = new URLSearchParams(window.location.search).get("operator_view");
+      if (data.session?.user && privateViews.has(operatorView) && isAdminUser(data.session.user)) {
+        navigateTo(operatorView);
+      }
     });
 
     const {
@@ -548,6 +557,11 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthLoading(false);
+
+      const operatorView = new URLSearchParams(window.location.search).get("operator_view");
+      if (nextSession?.user && privateViews.has(operatorView) && isAdminUser(nextSession.user)) {
+        navigateTo(operatorView);
+      }
     });
 
     return () => {
